@@ -137,14 +137,34 @@ export function useAuth() {
    */
   async function signInWithGoogle() {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      // Usar window.location.origin para garantir que usa a URL atual (localhost ou IP da rede)
+      const origin = window.location.origin;
+      const redirectTo = `${origin}/auth/callback`;
+      
+      // Log para debug - remover em produção
+      console.log('🔐 Iniciando login OAuth com redirectTo:', redirectTo);
+      console.log('📍 Origin atual:', origin);
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo,
+          queryParams: {
+            // Forçar o Supabase a usar a URL correta
+            redirect_to: redirectTo,
+          },
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro no login OAuth:', error);
+        throw error;
+      }
+      
+      // Log da URL gerada
+      if (data?.url) {
+        console.log('🔗 URL de autenticação gerada:', data.url);
+      }
     } catch (error) {
       setAuthState((prev) => ({
         ...prev,
@@ -186,10 +206,19 @@ export function useAuth() {
     }
   }
 
+  /**
+   * Recarrega o perfil do usuário (útil após atualizar chaves)
+   */
+  async function refreshProfile() {
+    if (!user) return;
+    await handleUserSession(user);
+  }
+
   return {
     ...authState,
     signInWithGoogle,
     signOut,
+    refreshProfile,
   };
 }
 

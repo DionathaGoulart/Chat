@@ -171,9 +171,10 @@ export function NewConversationModal({
                   {users.map((user) => (
                     <button
                       key={user.id}
-                      onClick={() => {
-                        onSelectUser(user.id);
-                        onClose();
+                      onClick={async () => {
+                        console.log('🖱️ Clicou no usuário:', user.display_name, user.id);
+                        await onSelectUser(user.id);
+                        // O modal será fechado pelo dashboard após a conversa ser criada
                       }}
                       className="w-full p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
                       aria-label={`Iniciar conversa com ${user.display_name}`}

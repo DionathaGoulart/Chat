@@ -3,7 +3,7 @@
  * Usa crypto_box do libsodium para criptografia assimétrica
  */
 
-import _sodium from 'libsodium-wrappers';
+import { initSodium } from './keys';
 import { publicKeyFromBase64, privateKeyFromBase64 } from './keys';
 
 export interface EncryptedMessage {
@@ -23,8 +23,7 @@ export async function encryptMessage(
   recipientPublicKey: string,
   senderPrivateKey: string
 ): Promise<EncryptedMessage> {
-  await _sodium.ready;
-  const sodium = _sodium as any;
+  const sodium = await initSodium();
   
   // Converter chaves de Base64 para Uint8Array
   const recipientPubKey = await publicKeyFromBase64(recipientPublicKey);
@@ -36,8 +35,9 @@ export async function encryptMessage(
   // Gerar nonce aleatório (24 bytes para XSalsa20-Poly1305)
   const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
   
-  // Criptografar usando crypto_box (X25519 + XSalsa20-Poly1305)
-  const cipherText = sodium.crypto_box(
+  // Criptografar usando crypto_box_easy (X25519 + XSalsa20-Poly1305)
+  // crypto_box_easy é mais simples e recomendado
+  const cipherText = sodium.crypto_box_easy(
     messageBytes,
     nonce,
     recipientPubKey,
@@ -62,8 +62,7 @@ export async function decryptMessage(
   senderPublicKey: string,
   recipientPrivateKey: string
 ): Promise<string> {
-  await _sodium.ready;
-  const sodium = _sodium as any;
+  const sodium = await initSodium();
   
   try {
     // Converter chaves de Base64 para Uint8Array
@@ -80,8 +79,8 @@ export async function decryptMessage(
       sodium.base64_variants.ORIGINAL
     );
     
-    // Descriptografar
-    const decryptedBytes = sodium.crypto_box_open(
+    // Descriptografar usando crypto_box_open_easy (correspondente ao crypto_box_easy)
+    const decryptedBytes = sodium.crypto_box_open_easy(
       cipherText,
       nonce,
       senderPubKey,
@@ -91,7 +90,73 @@ export async function decryptMessage(
     // Converter de Uint8Array para string
     return new TextDecoder().decode(decryptedBytes);
   } catch (error) {
+    console.error('Erro ao descriptografar:', error);
     throw new Error('Falha ao descriptografar mensagem. Verifique as chaves.');
+  }
+}
+
+/**
+ * Criptografa uma mensagem usando uma chave simétrica de conversa
+ * Usa crypto_secretbox (criptografia simétrica) - mais eficiente
+ */
+export async function encryptMessageWithConversationKey(
+  message: string,
+  conversationKey: string // Chave simétrica da conversa (Base64)
+): Promise<EncryptedMessage> {
+  const sodium = await initSodium();
+  const { conversationKeyFromBase64 } = await import('./keys');
+  
+  // Converter chave de Base64 para Uint8Array
+  const key = await conversationKeyFromBase64(conversationKey);
+  
+  // Converter mensagem para Uint8Array
+  const messageBytes = new TextEncoder().encode(message);
+  
+  // Gerar nonce aleatório (24 bytes para XSalsa20-Poly1305)
+  const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+  
+  // Criptografar usando crypto_secretbox_easy (criptografia simétrica)
+  const cipherText = sodium.crypto_secretbox_easy(messageBytes, nonce, key);
+  
+  return {
+    cipherText: sodium.to_base64(cipherText, sodium.base64_variants.ORIGINAL),
+    nonce: sodium.to_base64(nonce, sodium.base64_variants.ORIGINAL),
+  };
+}
+
+/**
+ * Descriptografa uma mensagem usando uma chave simétrica de conversa
+ * Usa crypto_secretbox_open (criptografia simétrica)
+ */
+export async function decryptMessageWithConversationKey(
+  encryptedMessage: EncryptedMessage,
+  conversationKey: string // Chave simétrica da conversa (Base64)
+): Promise<string> {
+  const sodium = await initSodium();
+  const { conversationKeyFromBase64 } = await import('./keys');
+  
+  try {
+    // Converter chave de Base64 para Uint8Array
+    const key = await conversationKeyFromBase64(conversationKey);
+    
+    // Converter cipherText e nonce de Base64 para Uint8Array
+    const cipherText = sodium.from_base64(
+      encryptedMessage.cipherText,
+      sodium.base64_variants.ORIGINAL
+    );
+    const nonce = sodium.from_base64(
+      encryptedMessage.nonce,
+      sodium.base64_variants.ORIGINAL
+    );
+    
+    // Descriptografar usando crypto_secretbox_open_easy
+    const decryptedBytes = sodium.crypto_secretbox_open_easy(cipherText, nonce, key);
+    
+    // Converter de Uint8Array para string
+    return new TextDecoder().decode(decryptedBytes);
+  } catch (error) {
+    console.error('Erro ao descriptografar com chave de conversa:', error);
+    throw new Error('Falha ao descriptografar mensagem. Verifique a chave da conversa.');
   }
 }
 

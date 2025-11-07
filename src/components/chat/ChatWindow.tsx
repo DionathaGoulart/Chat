@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useMessages } from '@/lib/hooks/useMessages';
+import { useMessagesSimple } from '@/lib/hooks/useMessagesSimple';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { formatDistanceToNow, format } from 'date-fns';
 import ptBR from 'date-fns/locale/pt-BR';
@@ -24,8 +24,8 @@ export function ChatWindow({
   conversationName,
   conversationAvatar,
 }: ChatWindowProps) {
-  const { messages, loading, error, sendMessage } = useMessages(conversationId);
-  const { profile } = useAuth();
+  const { messages, loading, error, sendMessage } = useMessagesSimple(conversationId);
+  const { user, profile } = useAuth();
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -42,6 +42,12 @@ export function ChatWindow({
 
   const handleSend = async () => {
     if (!messageText.trim() || !conversationId || sending) return;
+
+    // Verificar se o usuário tem chave pública antes de tentar enviar
+    if (!profile?.public_key || profile.public_key.trim() === '') {
+      setSendError('Por favor, configure suas chaves de criptografia primeiro. Aguarde o banner no topo da página configurar automaticamente.');
+      return;
+    }
 
     const text = messageText.trim();
     setMessageText('');
@@ -205,6 +211,47 @@ export function ChatWindow({
 
       {/* Input */}
       <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
+        {!profile?.public_key && (
+          <div className="mb-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
+              ⚠️ Configure suas chaves de criptografia para enviar mensagens.
+            </p>
+            <button
+              onClick={async () => {
+                try {
+                  const { generateKeyPair } = await import('@/lib/crypto/keys');
+                  const { savePrivateKey } = await import('@/lib/crypto/storage');
+                  
+                  // Gerar chaves
+                  const { publicKey, privateKey } = await generateKeyPair();
+                  
+                  // Salvar chave privada localmente
+                  await savePrivateKey(user?.id || '', privateKey);
+                  
+                  // Enviar chave pública ao servidor
+                  const response = await fetch('/api/auth/setup-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ publicKey }),
+                  });
+                  
+                  if (!response.ok) {
+                    throw new Error('Erro ao salvar chave pública');
+                  }
+                  
+                  // Recarregar página para atualizar perfil
+                  window.location.reload();
+                } catch (error) {
+                  console.error('Erro ao gerar chaves:', error);
+                  alert('Erro ao gerar chaves. Tente novamente.');
+                }
+              }}
+              className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+            >
+              Gerar Chaves de Criptografia
+            </button>
+          </div>
+        )}
         <div className="flex items-end space-x-2">
           <textarea
             ref={inputRef}
@@ -220,9 +267,10 @@ export function ChatWindow({
           />
           <button
             onClick={handleSend}
-            disabled={!messageText.trim() || sending}
+            disabled={!messageText.trim() || sending || !profile?.public_key}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
             aria-label="Enviar mensagem"
+            title={!profile?.public_key ? 'Configure suas chaves de criptografia primeiro' : 'Enviar mensagem'}
           >
             {sending ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>

@@ -17,6 +17,7 @@ export interface ConversationParticipant {
   conversation_id: string;
   user_id: string;
   joined_at: string;
+  other_participant_public_key?: string; // Chave pública do outro participante (armazenada localmente)
   profile?: UserProfile;
 }
 

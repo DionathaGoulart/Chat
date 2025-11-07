@@ -34,12 +34,26 @@ cp .env.local.example .env.local
 
 Execute o script SQL em `supabase/schema.sql` no Supabase SQL Editor para criar todas as tabelas e políticas RLS.
 
-4. **Configure Google OAuth no Supabase:**
+4. **Configure Google OAuth:**
 
-- Acesse o Supabase Dashboard → Authentication → Providers
-- Ative o Google Provider
-- Configure as credenciais do Google Cloud Console
-- Adicione a URL de callback: `https://seu-dominio.com/auth/callback`
+   **No Google Cloud Console:**
+   - A URL de callback já está correta: `https://ljiyvzldfiutebpzuxeg.supabase.co/auth/v1/callback`
+   - Não precisa alterar nada aqui!
+
+   **No Supabase Dashboard:**
+   - Acesse: **Authentication** → **URL Configuration** (ou **Settings** → **Auth**)
+   - No campo **"Site URL"**, coloque: `http://localhost:3000` (ou seu IP: `http://192.168.0.9:3000`)
+   - No campo **"Redirect URLs"**, adicione múltiplas URLs (uma por linha ou separadas por vírgula):
+     ```
+     http://localhost:3000/auth/callback
+     http://192.168.0.9:3000/auth/callback
+     ```
+   - **Importante**: As URLs em "Redirect URLs" são para onde o Supabase vai redirecionar APÓS autenticar. É diferente da URL do Google Cloud Console!
+   
+   **Resumo do fluxo:**
+   1. Usuário clica em "Login" → vai para Google
+   2. Google autentica → redireciona para Supabase (`https://ljiyvzldfiutebpzuxeg.supabase.co/auth/v1/callback`)
+   3. Supabase processa → redireciona para sua app (`http://localhost:3000/auth/callback` ou `http://192.168.0.9:3000/auth/callback`)
 
 5. **Inicie o servidor de desenvolvimento:**
 

@@ -48,14 +48,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Se já tem uma chave pública válida (não vazia), não atualizar (por segurança)
+    // Se já tem uma chave pública válida, permitir atualizar (usuário pode estar gerando nova chave)
+    // Mas logar para debug
     if (existingProfile && 'public_key' in existingProfile) {
       const existingPublicKey = (existingProfile as { public_key: string | null }).public_key;
       if (existingPublicKey && typeof existingPublicKey === 'string' && existingPublicKey.trim() !== '') {
-        return NextResponse.json({
-          message: 'Perfil já possui chave pública',
-          publicKey: existingPublicKey,
-        });
+        console.log('⚠️ Atualizando chave pública existente (usuário está gerando nova chave)');
+        // Continuar para atualizar a chave
       }
     }
 

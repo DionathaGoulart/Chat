@@ -6,8 +6,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../supabase/client';
-import { decryptMessage } from '../crypto/encryption';
+import { decryptMessageWithConversationKey } from '../crypto/encryption';
 import { getPrivateKey } from '../crypto/storage';
+import { decryptConversationKey } from '../crypto/keys';
 import type { Message } from '@/types/chat';
 import { useAuth } from './useAuth';
 
@@ -17,15 +18,69 @@ export function useMessages(conversationId: string | null) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [decrypting, setDecrypting] = useState(false);
+  // Cache da chave de conversa descriptografada (para evitar descriptografar toda vez)
+  const [conversationKeyCache, setConversationKeyCache] = useState<string | null>(null);
+
+  /**
+   * Busca e descriptografa a chave da conversa
+   */
+  const getConversationKey = useCallback(async (): Promise<string | null> => {
+    if (!conversationId || !user || !profile) return null;
+    
+    // Se já está em cache, retornar
+    if (conversationKeyCache) {
+      return conversationKeyCache;
+    }
+
+    try {
+      // Buscar chave criptografada da conversa para este usuário
+      const { data: keyData, error: keyError } = await supabase
+        .from('conversation_keys')
+        .select('encrypted_key')
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (keyError || !keyData) {
+        console.warn('Chave de conversa não encontrada:', keyError);
+        return null;
+      }
+
+      // Buscar chave privada do usuário
+      const privateKey = await getPrivateKey(user.id);
+      if (!privateKey) {
+        console.warn('Chave privada não encontrada para descriptografar chave de conversa');
+        return null;
+      }
+
+      // Descriptografar a chave da conversa
+      const conversationKey = await decryptConversationKey(
+        keyData.encrypted_key,
+        privateKey,
+        profile.public_key!
+      );
+
+      // Armazenar em cache
+      setConversationKeyCache(conversationKey);
+      return conversationKey;
+    } catch (err) {
+      console.error('Erro ao buscar/descriptografar chave de conversa:', err);
+      return null;
+    }
+  }, [conversationId, user, profile?.public_key]);
 
   const decryptMessages = useCallback(
     async (encryptedMessages: Message[]) => {
-      if (!user || !profile) return encryptedMessages;
+      if (!user || !profile || !conversationId) return encryptedMessages;
 
-      const privateKey = await getPrivateKey(user.id);
-      if (!privateKey) {
-        console.warn('Chave privada não encontrada para descriptografar mensagens');
-        return encryptedMessages;
+      // Buscar chave da conversa
+      const conversationKey = await getConversationKey();
+      if (!conversationKey) {
+        console.warn('Chave de conversa não disponível');
+        return encryptedMessages.map((msg) => ({
+          ...msg,
+          decrypted_text: '[Chave de conversa não disponível]',
+        }));
       }
 
       setDecrypting(true);
@@ -38,27 +93,14 @@ export function useMessages(conversationId: string | null) {
               return msg;
             }
 
-            // Buscar chave pública do remetente
-            const senderProfileResult = await supabase
-              .from('profiles')
-              .select('public_key')
-              .eq('id', msg.sender_id)
-              .maybeSingle();
-            
-            const senderProfile = senderProfileResult.data as { public_key: string | null } | null;
-
-            if (!senderProfile?.public_key) {
-              return { ...msg, decrypted_text: '[Não foi possível descriptografar]' } as Message;
-            }
-
             try {
-              const decryptedText = await decryptMessage(
+              // Descriptografar usando a chave da conversa
+              const decryptedText = await decryptMessageWithConversationKey(
                 {
                   cipherText: msg.cipher_text,
                   nonce: msg.nonce,
                 },
-                senderProfile.public_key,
-                privateKey
+                conversationKey
               );
 
               return {
@@ -66,7 +108,10 @@ export function useMessages(conversationId: string | null) {
                 decrypted_text: decryptedText,
               };
             } catch (err) {
-              console.error('Erro ao descriptografar mensagem:', err);
+              console.error('Erro ao descriptografar mensagem:', err, {
+                messageId: msg.id,
+                senderId: msg.sender_id,
+              });
               return { ...msg, decrypted_text: '[Erro ao descriptografar]' } as Message;
             }
           })
@@ -77,16 +122,19 @@ export function useMessages(conversationId: string | null) {
         setDecrypting(false);
       }
     },
-    [user, profile]
+    [user, profile, conversationId, getConversationKey]
   );
 
   useEffect(() => {
     if (!conversationId || !user) {
       setMessages([]);
       setLoading(false);
+      setConversationKeyCache(null); // Limpar cache quando mudar de conversa
       return;
     }
 
+    // Limpar cache quando mudar de conversa
+    setConversationKeyCache(null);
     loadMessages();
 
     // Inscrever-se em novas mensagens em tempo real
@@ -115,7 +163,7 @@ export function useMessages(conversationId: string | null) {
             sender: senderProfile || undefined,
           };
 
-          // Descriptografar a nova mensagem
+          // Descriptografar a nova mensagem usando a chave da conversa
           const decryptedMessages = await decryptMessages([messageWithSender]);
           if (decryptedMessages.length > 0) {
             setMessages((prev) => {
@@ -174,50 +222,17 @@ export function useMessages(conversationId: string | null) {
     }
 
     try {
-      // Buscar chave privada
-      const privateKey = await getPrivateKey(user.id);
-      if (!privateKey) {
-        setError('Chave privada não encontrada');
+      // Buscar chave da conversa (descriptografada)
+      const conversationKey = await getConversationKey();
+      if (!conversationKey) {
+        setError('Chave de conversa não encontrada. A conversa pode não ter sido configurada corretamente.');
         return false;
       }
 
-      // Buscar participantes da conversa (exceto o remetente)
-      const participantsResult = await supabase
-        .from('conversation_participants')
-        .select('user_id')
-        .eq('conversation_id', conversationId)
-        .neq('user_id', user.id);
+      // Criptografar mensagem usando a chave da conversa
+      const { encryptMessageWithConversationKey } = await import('../crypto/encryption');
+      const encrypted = await encryptMessageWithConversationKey(text, conversationKey);
       
-      const participants = participantsResult.data as Array<{ user_id: string }> | null;
-
-      if (!participants || participants.length === 0) {
-        setError('Nenhum destinatário encontrado');
-        return false;
-      }
-
-      // Buscar chaves públicas dos destinatários
-      const recipientIds = participants.map((p) => p.user_id);
-      const recipientProfilesResult = await supabase
-        .from('profiles')
-        .select('id, public_key')
-        .in('id', recipientIds)
-        .not('public_key', 'is', null);
-      
-      const recipientProfiles = recipientProfilesResult.data as Array<{ id: string; public_key: string }> | null;
-
-      if (!recipientProfiles || recipientProfiles.length === 0) {
-        setError('Nenhum destinatário com chave pública encontrado');
-        return false;
-      }
-
-      // Criptografar mensagem para cada destinatário
-      // Por simplicidade, vamos criptografar para o primeiro destinatário
-      // Em uma versão futura, poderíamos criptografar para todos (grupos)
-      const recipientPublicKey = recipientProfiles[0].public_key;
-
-      const { encryptMessage } = await import('../crypto/encryption');
-      const encrypted = await encryptMessage(text, recipientPublicKey, privateKey);
-
       // Enviar mensagem criptografada
       // @ts-expect-error - TypeScript tem problemas com tipos do Supabase aqui
       const insertResult = await supabase.from('messages').insert({

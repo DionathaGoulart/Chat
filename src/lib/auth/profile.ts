@@ -11,6 +11,7 @@ export interface UserProfile {
   email: string | null;
   avatar_url: string | null;
   public_key: string | null; // Pode ser null até o cliente gerar as chaves
+  role: 'admin' | 'user'; // Cargo do usuário
 }
 
 /**
@@ -65,6 +66,7 @@ export async function createOrUpdateUserProfile(
 
   // Novo usuário: criar perfil SEM chave pública
   // A chave pública será gerada no cliente e enviada via API
+  // Por padrão, novos usuários são 'user', não 'admin'
   const { data: newProfile, error: insertError } = await supabase
     .from('profiles')
     // @ts-expect-error - TypeScript tem problemas com tipos do Supabase aqui
@@ -74,6 +76,7 @@ export async function createOrUpdateUserProfile(
       email: email,
       avatar_url: avatarUrl || null,
       public_key: null, // NULL até o cliente gerar e enviar a chave pública
+      role: 'user', // Por padrão, novos usuários são 'user'
     })
     .select()
     .single();

@@ -22,7 +22,7 @@ export function ConversationsList({
   onSelectConversation,
   onNewConversation,
 }: ConversationsListProps) {
-  const { conversations, loading } = useConversations();
+  const { conversations, loading, deleteConversation } = useConversations();
   const { profile } = useAuth();
 
   const getOtherParticipant = (conversation: any) => {
@@ -112,50 +112,81 @@ export function ConversationsList({
                   })
                 : '';
 
+              const handleDelete = async (e: React.MouseEvent) => {
+                e.stopPropagation(); // Prevenir que o clique abra a conversa
+                
+                if (!confirm(`Tem certeza que deseja excluir a conversa com ${name}? Esta ação não pode ser desfeita.`)) {
+                  return;
+                }
+
+                await deleteConversation(conversation.id);
+              };
+
               return (
-                <button
+                <div
                   key={conversation.id}
-                  onClick={() => onSelectConversation(conversation.id)}
-                  className={`w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                  className={`group relative w-full hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                     isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-600' : ''
                   }`}
                 >
-                  <div className="flex items-start space-x-3">
-                    {/* Avatar */}
-                    <div className="flex-shrink-0">
-                      {avatarUrl ? (
-                        <img
-                          src={avatarUrl}
-                          alt={name}
-                          className="h-12 w-12 rounded-full"
-                        />
-                      ) : (
-                        <div className="h-12 w-12 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
-                          <span className="text-gray-600 dark:text-gray-300 font-medium">
-                            {name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Conteúdo */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {name}
-                        </p>
-                        {lastMessageTime && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                            {lastMessageTime}
-                          </span>
+                  <button
+                    onClick={() => onSelectConversation(conversation.id)}
+                    className="w-full p-4 text-left"
+                  >
+                    <div className="flex items-start space-x-3">
+                      {/* Avatar */}
+                      <div className="flex-shrink-0">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt={name}
+                            className="h-12 w-12 rounded-full"
+                          />
+                        ) : (
+                          <div className="h-12 w-12 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                            <span className="text-gray-600 dark:text-gray-300 font-medium">
+                              {name.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
                         )}
                       </div>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {lastMessage}
-                      </p>
+
+                      {/* Conteúdo */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            {name}
+                          </p>
+                          {lastMessageTime && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                              {lastMessageTime}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 truncate">
+                          {lastMessage}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                  
+                  {/* Botão de deletar (aparece no hover) */}
+                  <button
+                    onClick={handleDelete}
+                    className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity rounded-md hover:bg-red-50 dark:hover:bg-red-900/20"
+                    title="Excluir conversa"
+                    aria-label="Excluir conversa"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
               );
             })}
           </div>

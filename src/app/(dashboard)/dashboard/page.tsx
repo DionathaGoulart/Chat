@@ -39,9 +39,19 @@ export default function DashboardPage() {
   };
 
   const handleSelectUser = async (userId: string) => {
-    const conversation = await createConversation(userId);
-    if (conversation) {
-      setSelectedConversationId(conversation.id);
+    console.log('👤 Usuário selecionado para conversa:', userId);
+    try {
+      const conversation = await createConversation(userId);
+      if (conversation) {
+        console.log('✅ Conversa criada/selecionada:', conversation.id);
+        setSelectedConversationId(conversation.id);
+        setShowNewConversationModal(false);
+      } else {
+        console.error('❌ Falha ao criar conversa: retornou null');
+        // O erro já foi setado no hook useConversations
+      }
+    } catch (err) {
+      console.error('❌ Erro ao criar conversa:', err);
     }
   };
 
